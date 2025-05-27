@@ -143,6 +143,7 @@ def print_help():
     print("RA - Release all DHCP bindings")
     print("R - Release a specific IP address (syntax: R -<ip> <param> [-m])")
     print("H - Show this help message")
+    print("P - Print current DHCP bindings")
     print("Q - Quit the program")
     print("\nNote: This tool is designed to work with devices in the same VLAN and requires appropriate permissions to send TCP ACK requests.")
 
@@ -236,6 +237,8 @@ def main():
         elif choice == "Q":
             print("Exiting DHCP Monitor. Goodbye!")
             sys.exit(0)
+        elif choice == "P":
+            print_bindings()
         elif choice.startswith("R "):
             parts = choice.split()
             if len(parts) >= 3 and parts[1].startswith("-"):
