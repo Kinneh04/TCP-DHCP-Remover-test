@@ -239,7 +239,7 @@ def main():
 
                 sys.exit(0)
             else:
-                print("Invalid syntax. Use: R -<ip> <param> [-m]")
+                print("Invalid syntax. Use: R -<ip> <tryCount> [-m]")
         else:
             print("Invalid choice. Kill yourself \n")
 
