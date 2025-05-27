@@ -140,6 +140,8 @@ def drop_all_address_in_mimic_table():
 def print_help():   
     print("TCP DHCP Releaser Help:")
     print("S - Map TCP connections of other devices")
+    print("RA - Release all DHCP bindings")
+    print("R - Release a specific IP address (syntax: R -<ip> <param> [-m])")
     print("H - Show this help message")
     print("Q - Quit the program")
     print("\nNote: This tool is designed to work with devices in the same VLAN and requires appropriate permissions to send TCP ACK requests.")
