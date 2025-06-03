@@ -6,8 +6,8 @@ import socket
 # Dictionary to store DHCP bindings
 dhcp_bindings = {}
 DHCP_SERVER_IP_ADDRESS = "192.168.0.1"
-dhcp_bindings["DC:97:BA:17:82:BA"] = "192.168.0.116"
 MY_MAC = "DC:97:BA:17:82:BA"
+
 ip_pool = ["192.168.1." + str(i) for i in range(100, 110)]
 gateway_ip = "192.168.1.1"
 dns_server_ip = "192.168.1.1"
