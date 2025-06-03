@@ -11,6 +11,7 @@ MY_MAC = "DC:97:BA:17:82:BA"
 ip_pool = ["192.168.1." + str(i) for i in range(100, 110)]
 gateway_ip = "192.168.1.1"
 dns_server_ip = "192.168.1.1"
+Intface = "Ethernet 2"
 
 leases = {}
     
@@ -76,7 +77,7 @@ def tcp_arp_scan_dynamic():
     for i in range(1, 7):
         #Step 1: ARP to get MAC address
         target_ip = f"{base_ip_parts[0]}.{base_ip_parts[1]}.{base_ip_parts[2]}.{i}"
-        interface = "Ethernet 2"
+        interface = Intface
 
         arp_request = ARP(pdst=target_ip)
         ether = Ether(dst="ff:ff:ff:ff:ff:ff")
@@ -177,7 +178,7 @@ def forge_false_release(ip_address, number_of_times=1):
         )
 
         # Send the packet (update iface to match your interface)
-        sendp(packet, iface="Ethernet 2", verbose=0)
+        sendp(packet, iface=Intface, verbose=0)
         
         # send(Ether(src=mac_address, dst="60:b9:c0:3b:96:21") /
         #     IP(src=ip_address,dst=DHCP_SERVER_IP_ADDRESS) / 
